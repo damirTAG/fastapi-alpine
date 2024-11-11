@@ -17,14 +17,14 @@ async def get_all_routes():
 async def get_route_info(route_name: str):
     result = await routes.parse(route_name.capitalize())
     if result.status == "error":
-        raise HTTPException(status_code=404, detail=result["message"])
+        raise HTTPException(status_code=404, detail=result.message)
     return result
 
 @router.get("/routes/{route_id}", response_model=RouteResponse)
 async def get_route_info(route_id: str):
     result = await routes.parse(route_id)
     if result.status == "error":
-        raise HTTPException(status_code=404, detail=result["message"])
+        raise HTTPException(status_code=404, detail=result.message)
     return result
 
 
