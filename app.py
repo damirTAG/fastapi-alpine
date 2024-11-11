@@ -1,6 +1,8 @@
 import uvicorn, os
 from fastapi import FastAPI, APIRouter, HTTPException
 
+from urllib.parse import unquote
+
 from routes import Routes
 from schema import RouteResponse, RoutesResponse
 
@@ -15,7 +17,8 @@ async def get_all_routes():
 
 @router.get("/routes/{route_name}", response_model=RouteResponse)
 async def get_route_info(route_name: str):
-    result = await routes.parse(route_name.capitalize())
+    decoded_route_name = unquote(route_name)
+    result = await routes.parse(decoded_route_name.capitalize())
     if result.status == "error":
         raise HTTPException(status_code=404, detail=result.message)
     return result
