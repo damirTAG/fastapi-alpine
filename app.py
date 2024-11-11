@@ -1,4 +1,4 @@
-import uvicornm, os
+import uvicorn, os
 from fastapi import FastAPI, APIRouter, HTTPException
 
 from routes import Routes
