@@ -8,7 +8,7 @@ routes = Routes()
 
 @router.get("/", response_model=RoutesResponse)
 async def get_all_routes():
-    """Get a list of all available routes."""
+    """Get a list of all available mountaineering routes."""
     return routes.get_routes()
 
 @router.get("/{route_name}", response_model=RouteResponse)
