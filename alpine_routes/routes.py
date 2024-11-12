@@ -1,39 +1,44 @@
 from datetime import datetime
-import re
+import re, os
 import sqlite3
 import aiohttp
 
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Optional
 from bs4 import BeautifulSoup
-from schema import RouteResponse, RouteData, RoutesResponse, AllRoutes
+from .schemas import RouteResponse, RouteData, RoutesResponse, AllRoutes
 
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
+current_dir = os.path.dirname(__file__)
 
 class Routes:
-    def __init__(self) -> None:
-        self.conn = sqlite3.connect('database/routes.db')
-        self.cursor = self.conn.cursor()
+    def __init__(self, db_path: Optional[Union[str, os.PathLike]] = None) -> None:
+        if db_path:
+            self.db_path = db_path
+        else:
+            self.db_path = os.path.join(current_dir, '..', 'database', 'alpine_routes.db')
+        try:
+            self.conn = sqlite3.connect(self.db_path)
+            self.cursor = self.conn.cursor()
+        except sqlite3.OperationalError as e:
+            print(f"Failed to connect to the database at {self.db_path}: {e}")
+            self.conn = None
+            self.cursor = None
 
     def _find_route_details(self, route_name: str) -> List[Dict[str, Union[int, str]]]:
         """Find all routes that match the route name or ID."""
-        # Search by direct match
         self.cursor.execute("SELECT id, route_name, route_link FROM routes WHERE route_name LIKE ?", (f'%{route_name}%',))
         results = self.cursor.fetchall()
-        
-        # If no results, try a capitalized version
+
         if not results:
             transformed_name = route_name.capitalize()[:-1] + route_name[-1].upper()
             self.cursor.execute("SELECT id, route_name, route_link FROM routes WHERE route_name LIKE ?", (f'%{transformed_name}%',))
             results = self.cursor.fetchall()
-        
-        # As a final attempt, try finding by ID
         if not results:
             self.cursor.execute("SELECT id, route_name, route_link FROM routes WHERE id = ?", (route_name,))
             results = self.cursor.fetchall()
-        
-        # Convert to a list of dictionaries
+
         return [{"id": result[0], "route_name": result[1], "route_link": result[2]} for result in results]
 
     async def _fetch_page_content(self, url: str) -> Union[str, None]:
@@ -70,51 +75,18 @@ class Routes:
         route_details = self._find_route_details(route_name)
         if not route_details:
             return RouteResponse(
-                status="error",
+                status="404",
                 message="Route not found =(",
                 data=None,
                 retrieval_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             )
-        # For multiple routes, fetch parsed data for each route
-        if len(route_details) > 1:
-            return RouteResponse(
-                status="success",
-                message="multiple_routes",
-                data=[
-                        await self._get_route_data(route)
-                        for route in route_details
-                    ],
-                retrieval_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            )
-
-        # For a single route, fetch the parsed data
-        route = route_details[0]
-
-        # Fetch the HTML content of the route's page
-        html_content = await self._fetch_page_content(route["route_link"])
-        if not html_content:
-            return {
-                "status": "error",
-                "message": f"Failed to retrieve content from {route['route_link']}.",
-                "data": None
-            }
-
-        # Parse the HTML content
-        parsed_data = self._parse_html_content(html_content)
-
-        # Combine details and parsed data into a single response
-        response_data = RouteData(
-            id=route["id"],
-            route_name=route["route_name"],
-            link=route["route_link"],
-            description=parsed_data.get("description", ""),
-            images=parsed_data.get("images", [])
-        )
-
         return RouteResponse(
             status="success",
-            message="single_route",
-            data=response_data,
+            message="Route(-s) fetched.",
+            data=[
+                    await self._get_route_data(route)
+                    for route in route_details
+                ],
             retrieval_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         )
 
@@ -131,15 +103,14 @@ class Routes:
                 images=[]
             )
 
-        # Parse the HTML content for description and images
         parsed_data = self._parse_html_content(html_content)
 
         return RouteData(
             id=route["id"],
             route_name=route["route_name"],
             link=route["route_link"],
-            description=parsed_data.get("description", ""),  # Use parsed data for description
-            images=parsed_data.get("images", [])  # Use parsed data for images
+            description=parsed_data.get("description", ""), 
+            images=parsed_data.get("images", [])
         )
         
 
@@ -149,28 +120,25 @@ class Routes:
             self.conn = None
 
     def __del__(self):
-        # Ensure connection is closed when the instance is deleted
         self.close()
 
     def get_routes(self):
         self.cursor.execute("SELECT id, route_name, route_link FROM routes")
         routes = self.cursor.fetchall()
 
-        # Check if routes exist
         if not routes:
             return RoutesResponse(
-                status="error",
+                status="404",
                 message="Nothing found",
                 data=None,
                 retrieval_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             )
-        
-        # Map fetched routes into AllRoutes models
+
         route_data = [AllRoutes(id=route[0], route_name=route[1], link=route[2]) for route in routes]
 
         return RoutesResponse(
             status="success",
-            message="All routes fetched",
+            message="All routes fetched.",
             data=route_data,
             retrieval_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         )
