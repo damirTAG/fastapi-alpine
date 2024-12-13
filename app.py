@@ -3,8 +3,10 @@ import os
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
-from alpine_routes.endpoints import router, close_routes
+
+from alpine_routes.endpoints import router
+from fastapi.middleware.cors import CORSMiddleware
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -13,12 +15,18 @@ async def lifespan(app: FastAPI):
     print("shutting down...")
 
 app = FastAPI(lifespan=lifespan)
-
-@app.get("/", tags=["Homepage"])
-async def redirect_to_docs():
-    return RedirectResponse(url="/docs")
-
 app.include_router(router)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[ "*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+    kwargs = dict(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 8000))
+    )
+    uvicorn.run(app, **kwargs)
